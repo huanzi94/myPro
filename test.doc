@@ -1,6 +1,74 @@
 深入理解java虚拟机
-1.1	方法区：一般存放被虚拟机加载的类信息（类的版本，字段，方法，接口），常量，静态常量，即时编译后的代码信息等。
-1.2	堆：一般对象的实例就是在堆上分配内存，它是虚拟机管理的最大的一块内存区域，也是GC最主要的区域。JAVA堆可以处于不连续的内存空间，但是逻辑上是连贯的。
-1.3	虚拟机栈：java方法执行的所用到的区域，
-1.4	本地方法栈：
-1.5	程序计数器：
+1	常见的java虚拟机（JVM）：
+1.1	Sun HotSpot VM
+HotSpot是Sun/Oracle JDK 和 OpenJDK 中默认的虚拟机，是目前应运最为广泛的虚拟机，使用java –version来查看JDK版本信息：
+C:\Users> java -version
+java version "1.8.0_171"   # 如果是openJDK, 则这里会显示：openjdk version
+Java(TM) SE Runtime Environment (build 1.8.0_171-b11)
+Java HotSpot(TM) 64-Bit Server VM (build 25.171-b11, mixed mode) # 使用的是HotSpot虚拟机，默认为服务端模式
+1.2	IBM J9
+目前最具影响力的三大虚拟机之一。
+1.3	Taobao VM
+ 国内的一款虚拟机，由淘宝公司开发。
+2	java虚拟机内存结构：
+java虚拟机内存结构大致由方法区、堆、虚拟机栈、本地方法栈、程序计数器部分组成。其中方法区和堆属于线程共享区，虚拟机栈、本地方法栈和程序计数器属于线程私有区。
+ 
+2.1	方法区：一般存放被虚拟机加载的类信息（类的版本，字段，方法，接口），常量，静态常量，即时编译后的代码信息等。
+2.2	堆：一般对象的实例就是在堆上分配内存，它是虚拟机管理的最大的一块内存区域，也是GC最主要的区域。JAVA堆可以处于不连续的内存空间，但是逻辑上是连贯的。
+2.3	虚拟机栈：java方法执行的所用到的区域，每个方法执行都会创建一个栈帧，栈帧用于存放局部变量表，操作数栈，方法出口等信息。方法的从调用到执行完毕的过程就是栈帧在虚拟机栈中入栈到出栈的过程。当一个线程所请求的栈的深度大于虚拟机所允许的最大深度，就会抛出StackOverflowException。如果虚拟机栈能动态扩展内存，在申请内存时无法申请到足够的内存空间，则会抛出OutOfMemoryException。
+2.4	本地方法栈：本地方法栈和虚拟机栈一样都是方法执行所用到的区域，不过，本地方法栈执行的是一些Native方法。
+Native方法指的是：
+（1）java类中的方法被native关键字修饰，类似于abstract修饰的方法一样，只有方法签名，没有具体实现。主要用于加载文件和动态链接库，比如java无法访问操作系统的底层信息，这时就必须使用C语言来实现访问操作系统底层信息的代码，也就是被native修饰的方法可以被C语言重写。
+（2）实现步骤：
+a、Java程序中声明native修饰的方法，类似于abstract修饰的方法，只有方法签名，没有方法实现。编译该java文件，会产生一个.class文件。
+b、使用javah编译上一步产生的class文件，会产生一个.h文件。
+c、.cpp文件实现上一步中.h文件中的方法。
+d、.cpp文件编译成动态链接库文件.dll。
+e、最用System或是Runtime中的loadLibrary()方法加载上一步的产生的动态连接库文件了。
+2.5	程序计数器：程序计数器是程序执行的信号指示器。Java虚拟机在执行代码过程中，字节码解释器通过更改程序计数器的值来确定接下来执行哪一条指令。
+3	Java对象
+在java中，万物皆对象。在应运中对象是类的一个实例，指的是一个具体的东西。比如定义一个动物类，那么对象可以是具体的某个动物，比如猫。
+3.1	对象的创建
+3.1.1	使用new关键字创建对象
+3.1.2	使用Class.forName()加载类，然后通过newInstance()获取类的实例或者先获取类的构造方法，通过构造器的newInstance()获取类的实例。
+Class record = Class.forName("testDemo.Record");
+// 直接通过newInstance()获取类的实例
+Record re = (Record) record.newInstance();
+System.out.println(re instanceof Record);
+
+// 先获取类的构造器
+Constructor con = record.getConstructor();
+// 通过类的构造器获取类的实例
+Record re1 = (Record) con.newInstance();
+3.1.3	实现Clonable接口并重写clone()方法，调用clone()方法创建类的实例。
+class Record implements Cloneable{
+@Override
+protected Object clone() throws CloneNotSupportedException {
+    return super.clone();
+}
+}
+Record rr2 = new Record();
+Record rr3 = (Record) rr2.clone();
+3.1.4	利用反序列化机制创建对象
+
+
+4	垃圾回收
+5	内存分配
+6	虚拟机工具
+7	性能调优
+7.1	
+8	类文件的结构
+9	字节码指令
+10	类加载机制
+知识点：类的初始化过程（重要）
+Student s = new Student();在内存中做了哪些事情?
+•	加载Student.class文件进内存
+•	在栈内存为s开辟空间
+•	在堆内存为学生对象开辟空间
+•	对学生对象的成员变量进行默认初始化
+•	对学生对象的成员变量进行显示初始化
+•	通过构造方法对学生对象的成员变量赋值
+•	学生对象初始化完毕，把对象地址赋值给s变量
+10.1	
+11	虚拟机字节码执行引擎
+
