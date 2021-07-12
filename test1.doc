@@ -1,0 +1,78 @@
+1.1	线程间通信
+1.1.1	等待/通知(wait()/notify())机制
+等待/通知机制就是，某个线程在执行的过程中等待另外一个线程通知它，它获取到通知后就会继续执行。最典型的就是就餐问题，送餐员必须等待厨师通知他可以取餐的时候，他才可以去取餐，否则他只能一直在等待。
+wait()/notify()必须在synchronized修饰的方法或者代码中调用，也就是说，必须得有锁对象才能正常使用，否则就会报IllegalMonitorStateException。
+示例：
+/**
+ * 等待通知代码测试类
+ */
+// 创建Thread09.java
+public class Thread09 {
+    public static void main(String[] args) {
+        Object obj = new Object();
+        Thread T1 = new Thread(() -> {
+            System.out.println("T1 start");
+            synchronized (obj) {
+                try {
+                    obj.wait();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+            System.out.println("T1 end");
+        });
+        T1.start();
+
+        Thread T2 = new Thread(() -> {
+            System.out.println("T2 start");
+            synchronized (obj) {
+                for (int i = 0; i < 5; i++) {
+                    System.out.println(i);
+                }
+                obj.notify();
+            }
+            System.out.println("T2 end");
+        });
+        T2.start();
+    }
+}
+T1线程启动后打印了“T1 start”后调用了wait()方法，进入等待队列，T2线程启动后，调用了notify()方法唤醒了T1线程，使得T1线程继续执行，打印了“T1 end”这句话。这就是wait()/notify()最基础的用法。
+1.1.2	wait()执行后会立即释放锁，notify()执行后不立即释放锁，必须等待同步方法或者同步代码块里面的代码执行完才会释放锁。
+/**
+ * wait()/notify()执行后所释放时间验证类
+ */
+public class Thread10 {
+    public static void main(String[] args) {
+        Object lock = new Object();
+        ThreadA10 threadA10 = new ThreadA10();
+        new Thread(() -> {
+            synchronized (lock) {
+                Thread.currentThread().setName("T1");
+                try {
+                    lock.wait();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                threadA10.printString();
+            }
+        }).start();
+
+        new Thread(() -> {
+            synchronized (lock) {
+                Thread.currentThread().setName("T2");
+                threadA10.printString();
+                lock.notify();
+                for (int i = 0; i < 10; i++) {
+                    System.out.println(i);
+                }
+            }
+        }).start();
+    }
+}
+
+class ThreadA10 {
+    public void printString () {
+        System.out.println(Thread.currentThread().getName());
+    }
+}
+T1线程和T2线程都是用了同一把lock锁，T1线程启动后打印了“T1”后调用了wait()方法，进入等待队列，T2线程启动后，立马打印了“T2”,说明T1线程立马释放了锁被T2线程获得了lock锁。T2调用了notify()方法唤醒了T1线程，但是T1线程并没有立马，而是等到T2线程执行完后边的代码后，T1线程才继续执行，打印了“T1”这句话。这就说明wait()执行后会立即释放锁，notify()执行后不立即释放锁，必须等待同步方法或者同步代码块里面的代码执行完才会释放锁。
