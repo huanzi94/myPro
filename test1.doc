@@ -37,7 +37,7 @@ public class Thread09 {
     }
 }
 T1线程启动后打印了“T1 start”后调用了wait()方法，进入等待队列，T2线程启动后，调用了notify()方法唤醒了T1线程，使得T1线程继续执行，打印了“T1 end”这句话。这就是wait()/notify()最基础的用法。
-1.1.2	wait()执行后会立即释放锁，notify()执行后不立即释放锁，必须等待同步方法或者同步代码块里面的代码执行完才会释放锁。
+wait()执行后会立即释放锁，notify()执行后不立即释放锁，必须等待同步方法或者同步代码块里面的代码执行完才会释放锁。
 /**
  * wait()/notify()执行后所释放时间验证类
  */
@@ -76,3 +76,132 @@ class ThreadA10 {
     }
 }
 T1线程和T2线程都是用了同一把lock锁，T1线程启动后打印了“T1”后调用了wait()方法，进入等待队列，T2线程启动后，立马打印了“T2”,说明T1线程立马释放了锁被T2线程获得了lock锁。T2调用了notify()方法唤醒了T1线程，但是T1线程并没有立马，而是等到T2线程执行完后边的代码后，T1线程才继续执行，打印了“T1”这句话。这就说明wait()执行后会立即释放锁，notify()执行后不立即释放锁，必须等待同步方法或者同步代码块里面的代码执行完才会释放锁。
+1.1.2	等待通知的经典案例-生产者/消费者模式
+生产者/消费者模式指的是，生产者生产好数据后通知消费者消费数据，而消费者消费完数据后，又通知生产者生产数据，这是一个往返循环的过程。生产者/消费者模式在处理过程中也是使用的wait()/notify()机制，但是这中机制可能会造成一种假死的现象。下边模拟这中情况。
+实例：
+/**
+ * 生产者/消费者模式(wait()/notify())执行后出现假死现象验证类
+ */
+public class Thread11 {
+    public static void main(String[] args) throws InterruptedException {
+        Object lock = new Object();
+        P p = new P(lock);
+        C c = new C(lock);
+        for (int i = 0; i < 2; i++) {
+            ThreadA11 threadA11 = new ThreadA11(p);
+            ThreadB11 threadB11 = new ThreadB11(c);
+            threadA11.setName("P" + i);
+            threadB11.setName("C" + i);
+            threadA11.start();
+            threadB11.start();
+        }
+        Thread.sleep(500);
+        Thread[] threads = new Thread[Thread.currentThread().getThreadGroup().activeCount()];
+        Thread.currentThread().getThreadGroup().enumerate(threads);
+        for (int i = 0; i < threads.length; i++) {
+            System.out.println(threads[i].getName() + " " + threads[i].getState());
+        }
+    }
+}
+
+class ValueObject {
+    public static volatile String value = "";
+}
+
+// 生产者
+class P {
+    private Object lock;
+
+    public P(Object lock) {
+        this.lock = lock;
+    }
+
+    public void product() {
+        synchronized (lock) {
+            while (!"".equals(ValueObject.value)) {
+                try {
+                    System.out.println("生产者 " + Thread.currentThread().getName() + " WAITING了");
+                    lock.wait();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+            ValueObject.value = "" + System.currentTimeMillis();
+            System.out.println("生产者 " + Thread.currentThread().getName() + " RUNNAVBLE了");
+            lock.notify();
+        }
+    }
+}
+
+// 消费者
+class C {
+    private Object lock;
+
+    public C(Object lock) {
+        this.lock = lock;
+    }
+
+    public void consume() {
+        synchronized (lock) {
+            while ("".equals(ValueObject.value)) {
+                try {
+                    System.out.println("消费者 " + Thread.currentThread().getName() + " WAITING了");
+                    lock.wait();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+            ValueObject.value = "";
+            System.out.println("消费者 " + Thread.currentThread().getName() + " RUNNAVBLE了");
+            lock.notify();
+        }
+    }
+}
+
+class ThreadA11 extends Thread {
+    private P p;
+
+    public ThreadA11(P p) {
+        this.p = p;
+    }
+
+    @Override
+    public void run() {
+        while (true) {
+            p.product();
+        }
+    }
+}
+
+class ThreadB11 extends Thread {
+    private C c;
+
+    public ThreadB11(C c) {
+        this.c = c;
+    }
+
+    @Override
+    public void run() {
+        while (true) {
+            c.consume();
+        }
+    }
+}
+ 
+从结果可以看出，所有的生产者/消费者线程都成WAITING状态了，而程序还是运行状态，线程出现假死状态，出现假死状态的可能原因是：notify()是随机唤醒一个等待的线程，有可能是“生态者”唤醒“生态者”或者是“消费者”唤醒“消费者”，不停的这样操作，导致最后所有的线程都成WAITING状态，出现假死装状态。从结果继续分析出现假死的步骤：
+（1）	P0生产完数据，发出通知，并释放了锁。
+（2）	P0再次进入while循环，发现数据还未被消费，故P0进入WAITTING状态。
+（3）	C0消费了数据，发出通知并释放了锁。
+（4）	C0再次进入while循环，发现数据已经被消费，故C0进入WAITTING状态并释放了锁。
+（5）	C1获得了锁，但是发现数据已经被消费，故C1进入WAITTING状态并释放了锁。
+（6）	P1生产完数据，发出通知并释放了锁。
+（7）	P1再次进入while循环，发现数据还未被消费，故P1进入WAITTING状态并释放了锁。
+（8）	C0接收到了通知（第6步发出的通知，生产者P1唤醒了消费者C0），消费了数据，发出通知并释放了锁。
+（9）	C0再次进入while循环，发现数据已经被消费，故C0再次进入WAITTING状态并释放了锁。
+（10）	C1接收到了通知（第8步发出的通知，消费者C0唤醒了消费者C1），但是发现数据已经被消费，故C1进入WAITTING状态并释放了锁。
+（11）	P0接收到了通知（第8步发出的通知，消费者C0唤醒了消费者C1），生产完数据，发出通知并释放了锁。
+（12）	P0再次进入while循环，发现数据未被消费，故P0再次进入WAITTING状态并释放了锁。
+（13）	P1接收到了通知，发现数据未被消费，故P1再次进入WAITTING状态并释放了锁。
+
+
+
