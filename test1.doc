@@ -1,5 +1,5 @@
-1.1	线程间通信
-1.1.1	等待/通知(wait()/notify())机制
+1	线程间通信
+1.1	等待/通知(wait()/notify())机制
 等待/通知机制就是，某个线程在执行的过程中等待另外一个线程通知它，它获取到通知后就会继续执行。最典型的就是就餐问题，送餐员必须等待厨师通知他可以取餐的时候，他才可以去取餐，否则他只能一直在等待。
 wait()/notify()必须在synchronized修饰的方法或者代码中调用，也就是说，必须得有锁对象才能正常使用，否则就会报IllegalMonitorStateException。
 示例：
@@ -76,7 +76,7 @@ class ThreadA10 {
     }
 }
 T1线程和T2线程都是用了同一把lock锁，T1线程启动后打印了“T1”后调用了wait()方法，进入等待队列，T2线程启动后，立马打印了“T2”,说明T1线程立马释放了锁被T2线程获得了lock锁。T2调用了notify()方法唤醒了T1线程，但是T1线程并没有立马，而是等到T2线程执行完后边的代码后，T1线程才继续执行，打印了“T1”这句话。这就说明wait()执行后会立即释放锁，notify()执行后不立即释放锁，必须等待同步方法或者同步代码块里面的代码执行完才会释放锁。
-1.1.2	等待通知的经典案例-生产者/消费者模式
+1.1.1	等待通知的经典案例-生产者/消费者模式
 生产者/消费者模式指的是，生产者生产好数据后通知消费者消费数据，而消费者消费完数据后，又通知生产者生产数据，这是一个往返循环的过程。生产者/消费者模式在处理过程中也是使用的wait()/notify()机制，但是这中机制可能会造成一种假死的现象。下边模拟这中情况。
 实例：
 /**
@@ -202,6 +202,209 @@ class ThreadB11 extends Thread {
 （11）	P0接收到了通知（第8步发出的通知，消费者C0唤醒了消费者C1），生产完数据，发出通知并释放了锁。
 （12）	P0再次进入while循环，发现数据未被消费，故P0再次进入WAITTING状态并释放了锁。
 （13）	P1接收到了通知，发现数据未被消费，故P1再次进入WAITTING状态并释放了锁。
+从上边的分析可以看出，假死的原因就是因为因为不断的唤醒了同类，解决的办法就是将lock.notify()换成lock.notifyAll()。每次唤醒的线程的时候，将所有的等待的线程全部唤醒。将lock.notify()换成lock.notifyAll()后，会发现程序将会不停的执行下去。
+1.1.2	使用管道进行通信
+管道（pipeStream）是是一种特殊的输入/输出流，用于不同线程间传输数据，一个线程发送数据到输出管道中，另外一个线程从输入管道中获取数据。
+JAVA提供了四个类来实现管道通信：
+	字符流管道：PipedWriter、PipedRead
+	字节流管道：PipedOutputStream、PipedInputStream
+/**
+ * 线程间管道通信测试类
+ * 1、字节流方式
+ * 2、字符流方式
+ */
+public class Thread12 {
+    public static void main(String[] args) throws InterruptedException {
+        // 管道：字节流方式
+        PipedInputStream inputStream = new PipedInputStream();
+        PipedOutputStream outputStream = new PipedOutputStream();
 
+        // 管道：字符流方式
+        PipedWriter pipedWriter = new PipedWriter();
+        PipedReader pipedReader = new PipedReader();
 
+        try {
+            pipedWriter.connect(pipedReader);
+            // pipedReader.connect(pipedWriter);
+
+            inputStream.connect(outputStream);
+            // outputStream.connect(inputStream);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        PipelineReadData pipelineReadData = new PipelineReadData();
+        new Thread(() -> pipelineReadData.readData(inputStream)).start();
+        new Thread(() -> pipelineReadData.readData(pipedReader)).start();
+        Thread.sleep(500);
+        PipelineWriteData pipelineWriteData = new PipelineWriteData();
+        new Thread(() -> pipelineWriteData.writeData(outputStream)).start();
+        new Thread(() -> pipelineWriteData.writeData(pipedWriter)).start();
+    }
+}
+
+class PipelineReadData {
+    public void readData (PipedInputStream inputData) {
+        try {
+            byte[] bytes = new byte[1024];
+            int dataLength = inputData.read(bytes);
+            System.out.println("readData read (字节流方式):");
+            while (-1 != dataLength) {
+                System.out.println(new String(bytes, 0, dataLength));
+                dataLength = inputData.read(bytes);
+            }
+            inputData.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void readData (PipedReader inputData) {
+        try {
+            char[] chars = new char[1024];
+            int dataLength = inputData.read(chars);
+            System.out.println("readData read (字符流方式):");
+            while (-1 != dataLength) {
+                System.out.println(new String(chars, 0, dataLength));
+                dataLength = inputData.read(chars);
+            }
+            inputData.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+}
+
+class PipelineWriteData {
+    public void writeData (PipedOutputStream outputData) {
+        try {
+            System.out.println("writeData write (字节流方式):");
+            System.out.println("hello word!");
+            outputData.write("hello word!".getBytes());
+            outputData.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void writeData (PipedWriter outputData) {
+        try {
+            System.out.println("writeData write (字符流方式):");
+            System.out.println("hello word!");
+            outputData.write("hello word!");
+            outputData.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+}
+
+1.1.3	等待/通知通信模式实战
+使用等待/通知模式实现交叉备份数据的需求。
+/**
+ * 等待/通知m模式实战：交叉备份数据
+ * 要求：起10个线程，5个线程备份数据到数据库A,5个线程备份数据到数据库B
+ *      并且要求线程交叉执行
+ */
+public class Thread13 {
+    public static void main(String[] args) {
+        BckDada bckDada = new BckDada();
+        for (int i = 0; i < 5; i++) {
+            new Thread(() -> {
+                try {
+                    bckDada.BckDadaA();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }).start();
+
+            new Thread(() -> {
+                try {
+                    bckDada.BckDadaB();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }).start();
+        }
+    }
+}
+
+class BckDada {
+    private volatile boolean isStartBckA = false;
+
+    public synchronized void BckDadaA () throws InterruptedException {
+        while (isStartBckA) {
+            this.wait();
+        }
+        System.out.println("######");
+        isStartBckA = true;
+        this.notifyAll();
+    }
+
+    public synchronized void BckDadaB () throws InterruptedException {
+        while (!isStartBckA) {
+            this.wait();
+        }
+        System.out.println("&&&&&&");
+        isStartBckA = false;
+        this.notifyAll();
+    }
+}
+1.2	使用join()方法
+如果一个线程需要等待另外一个线程运行完毕后采取执行，那么就得使用join()方法，join()方法的意思就是把A线程加入到B线程的内部，相当于将A线程变成了B线程的子线程，那么此时B线程就必须等待A线程执行完才能执行后边的代码，此时B线程是就可以使用A线程执行完的数据。总之：
+	join()方法有使线程排队的作用，类似于synchronized达到同步执行的效果，只是join()底层是wait()实现，synchronized底层是使用监视器实现。
+	join()方法可以完成线程间数据的可见性。
+	join(long)方法底层使用wait(long)方法实现，具有是线程等待一段时间的作用，sleep(long)也能达到这个效果，只是join(long)执行后会释放锁，而sleep(long)不会释放锁。
+	join()方法执行完后，具有释放锁的特点。
+/**
+ * Thread.join()方法测试类
+ */
+public class Thread14 {
+    public static void main(String[] args) {
+
+        Thread t1 = new Thread(() ->{
+            System.out.println("T1 start");
+        }, "T1");
+
+        Thread t2 = new Thread(() ->{
+            try {
+                t1.join(1000); // 这段代码可以保证先打印T1 start后打印T2 start
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            System.out.println("T2 start");
+        }, "T2");
+
+        t2.start();
+        t1.start();
+    }
+}
+注意：使用join()方法可能会导致join()之后的代码先运行（出现意外的情况下，）。
+1.3	ThreadLocal的使用
+1.3.1	ThreadLocal具有线程隔离性
+如果多个线程都往同一个public static的ThreadLocal的变量中存储数据，那么对应的线程的数据是和线程本身挂钩的，也就是在A线程中不会获取到B线程的数据，在B线程中不会获取到A线程的数据。如下验证：
+实例：
+/**
+ * ThreadLocal的数据隔离性验证
+ */
+public class Thread15 {
+    public static void main(String[] args) {
+        CommData.local.set("main set value");
+        Thread t1 = new Thread(() -> {
+            CommData.local.set("T1 set value");
+            System.out.println("T1 get value" + CommData.local.get());
+        }, "T1");
+        Thread t2 = new Thread(() -> {
+            CommData.local.set("T2 set value");
+            System.out.println("T2 get value" + CommData.local.get());
+        }, "T2");
+        t1.start();
+        t2.start();
+        System.out.println("main get value" + CommData.local.get());
+    }
+}
+
+class CommData {
+    public static ThreadLocal<String> local = new ThreadLocal<>();
+}
+从结果中可以看出，在当前线程中使用CommData.local.get()只能获取当前线程存储的内存，其他线程存储的线程对于当前线程是不可见的。
 
