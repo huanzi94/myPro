@@ -407,4 +407,159 @@ class CommData {
     public static ThreadLocal<String> local = new ThreadLocal<>();
 }
 从结果中可以看出，在当前线程中使用CommData.local.get()只能获取当前线程存储的内存，其他线程存储的线程对于当前线程是不可见的。
+1.3.2	InheritableThreadLocal的数据继承性验证
+	InheritableThreadLocal可以调用initialValue()设置初始值，就算没有set,也不会获取到null。
+	InheritableThreadLocal在父线程设置的值，可以继承到子线程中使用，但是在子线程设置的值，不会传递到父线程，父线程依旧取得值是旧值。
+/**
+ * InheritableThreadLocal的数据继承性验证
+ * 1、InheritableThreadLocal可以调用initialValue()设置初始值，就算没有set,也不会获取到null
+ * 2、InheritableThreadLocal在父线程设置的值，可以继承到子线程中使用，但是在子线程设置的值，不会传递到父线程，
+ *   父线程依旧取得值是旧值
+ */
+public class Thread16 {
+    public static void main(String[] args) {
+        CommData16 commData16 = new CommData16();
+        // commData16.set("main set value");
+        Thread t1 = new Thread(() -> {
+            commData16.set("T1 set value");
+            System.out.println("T1 get value " + commData16.get());
+        }, "T1");
+        Thread t2 = new Thread(() -> {
+            System.out.println("T2 get value " + commData16.get());
+        }, "T2");
+        t1.start();
+        t2.start();
+        System.out.println("main get value " + commData16.get());
+    }
+}
 
+class CommData16 extends InheritableThreadLocal {
+    @Override
+    protected Object initialValue() {
+        return new Date().getTime();
+    }
+
+    @Override
+    protected Object childValue(Object parentValue) {
+        return parentValue + " child set value……";
+    }
+}
+
+2	锁的使用
+2.1	ReentrantLock锁(可重入锁)
+ReentrantLock锁可以达到和synchronized同样的效果，甚至能比synchronized更加灵活。ReentrantLock锁使用lock()和unlock()解锁和释放锁。
+2.1.1	PeentrantLock锁中的公平锁和非公平锁
+PeentrantLock锁分公平锁和非公平锁，提供两个构造函数：new PeentrantLock()的时候默认是非公平锁，new PeentrantLock(boolean fair)的时候，接受一个boolean值来指定。
+示例：
+/**
+ * ReentrantLock（可重入锁）加锁保证线程之间顺序执行
+ *
+ *                 ReentrantLock内部类抽象类Sync
+ *                          -
+ *                          -
+ *  ReentrantLock      Sync继承于AQS     Sync的实现类NonfairSync
+ *    lock() -----调用----> lock() --------->  lock()
+ */
+public class Thread17 {
+    //private static final ReentrantLock lock = new ReentrantLock();
+    private static final ReentrantLock lock = new ReentrantLock(true);
+
+    public static void main(String[] args) throws InterruptedException {
+        for (int i = 0; i < 100; i++) {
+            new Thread(Thread17::printString, "A" + i).start();
+        }
+    }
+
+    public static void printString() {
+        try {
+            lock.lock();
+            System.out.println(Thread.currentThread().getName() + "被执行了");
+        } finally {
+            lock.unlock();
+        }
+    }
+}
+非公平锁：创建非公平锁new ReentrantLock()后，加上lock.lock()和lock.unlock()方法后依旧是乱序打印，这说明非公平锁并不是按照执行启动顺序来获取锁的，先启动的并不一定会先获得锁。
+公平锁：创建公平锁new ReentrantLock(true)后，加上lock.lock()和lock.unlock()方法后基本上呈现有序打印，这说明公平锁在一定程度上可以保证，先到的定会先获得锁。
+
+
+
+2.1.2	PeentrantLock中的Condition
+使用Condition可以实现等待/通知模式。利用Condition可以实现顺序打印。
+示例：
+/**
+ * Condition实现等待/通知模式
+ * 1、使用Condition实现将业务排序规划
+ */
+public class Thread18 {
+    public static volatile int nextPrint = 1;
+    public static void main(String[] args) throws InterruptedException {
+        ThreadA18 threadA18 = new ThreadA18();
+        for (int i = 0; i < 5; i++) {
+            new Thread(() -> threadA18.aPrintString(nextPrint), "A").start();
+            new Thread(() -> threadA18.bPrintString(nextPrint), "B").start();
+            new Thread(() -> threadA18.cPrintString(nextPrint), "C").start();
+        }
+    }
+}
+
+class ThreadA18 {
+    private static final ReentrantLock lock = new ReentrantLock();
+    private static final Condition conditionA = lock.newCondition();
+    private static final Condition conditionB = lock.newCondition();
+    private static final Condition conditionC = lock.newCondition();
+    public void aPrintString(int nextPrint) {
+        try {
+            lock.lock();
+            if (nextPrint != 1) {
+                conditionA.await();
+            }
+            for (int i = 0; i < 3; i++) {
+                System.out.println(Thread.currentThread().getName() + " " + i);
+            }
+            Thread18.nextPrint = 2;
+            conditionB.signal();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public void bPrintString(int nextPrint) {
+        try {
+            lock.lock();
+            if (nextPrint != 2) {
+                conditionB.await();
+            }
+            for (int i = 0; i < 3; i++) {
+                System.out.println(Thread.currentThread().getName() + " " + i);
+            }
+            Thread18.nextPrint = 3;
+            conditionC.signal();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public void cPrintString(int nextPrint) {
+        try {
+            lock.lock();
+            if (nextPrint != 3) {
+                conditionC.await();
+            }
+            for (int i = 0; i < 3; i++) {
+                System.out.println(Thread.currentThread().getName() + " " + i);
+            }
+            Thread18.nextPrint = 1;
+            conditionA.signal();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } finally {
+            lock.unlock();
+        }
+    }
+}
+2.2	
