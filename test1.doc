@@ -484,7 +484,7 @@ public class Thread17 {
 
 
 
-2.1.2	PeentrantLock中的Condition
+2.2	PeentrantLock中的Condition
 使用Condition可以实现等待/通知模式。利用Condition可以实现顺序打印。
 示例：
 /**
@@ -562,4 +562,170 @@ class ThreadA18 {
         }
     }
 }
-2.2	
+2.3	ReentrantReadWriteLock锁(读写锁)
+ReentrantLock在加锁的过程中，是完全排他的效果，即同一个时间，只能允许一个线程执行lock()方法后边的代码，有时候在不需要操作变量，而只是读取的情况下，ReentrantLock效率就比较低，JAVA中提供了一种读写锁（ReentrantReadWriteLock），读锁与写锁是两种锁，可以做到，在只有读操作时候，可以保证多个线程同步执行，在写操作的过程只能一步执行。
+示例：
+/**
+ * ReentrantReadWriteLock读写锁测试类
+ * 1、读读共享
+ * 2、读写/写读互斥
+ * 3、写写互斥
+ */
+public class Thread19 {
+    public static void main(String[] args) {
+        ThreadA19 threadA19 = new ThreadA19();
+        new Thread(threadA19::read, "A").start();
+        new Thread(threadA19::read, "B").start();
+        new Thread(threadA19::write, "C").start();
+        new Thread(threadA19::write, "D").start();
+    }
+}
+
+class ThreadA19 {
+    private ReentrantReadWriteLock readWriteLock = new ReentrantReadWriteLock();
+    public void read () {
+        readWriteLock.readLock().lock();
+        System.out.println(Thread.currentThread().getName() + " read " + System.currentTimeMillis());
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        readWriteLock.readLock().unlock();
+    }
+
+    public void write () {
+        readWriteLock.writeLock().lock();
+        System.out.println(Thread.currentThread().getName() + " write " + System.currentTimeMillis());
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        readWriteLock.writeLock().unlock();
+    }
+}
+从结果可以看出，A和B两个线程几乎是同时执行read()方法中的代码的。因为他们打印的时间几乎是相同的，而C和D两个线程是异步执行的，因为他们打印的时间相差了1000毫秒左右，这是因为D线程执行的过程中必须等待C线程执行完释放速锁之后才能执行。
+
+3	定时器Timer
+JAVA中的定时器Timer是一个负责执行计划任务的功能，即在某个时间开始执行某一个任务。
+Timers最主要的是负责计划任务，具体的任务的实现需要放在TimerTask的子类中，TimerTask是一个实现了Runnable接口的抽象类，所以需要重写它的run()方法。
+3.1	schedule()方法
+schedule()方法在Timer类中，几个重载的方法。
+3.1.1	schedule(TimerTask task, long delay)
+该方法以启动的时间为主，延迟指定的毫秒数后在执行相关的代码。
+示例：
+/**
+ * Timer定时器测试验证类
+ */
+public class Thread20 {
+    public static void main(String[] args) {
+        Timer timer = new Timer();
+        System.out.println("***************************");
+        TimerTask task = new TimerTask() {
+            @Override
+            public void run() {
+                System.out.println("task run time" + new Date());
+            }
+        };
+        System.out.println("task start time" + new Date());
+        // 该任务启动后，延迟2秒后再执行
+        timer.schedule(task, 2000);
+    }
+}
+3.1.2	schedule(TimerTask task, long delay, long period)
+该任务启动后，延迟指定的毫秒数后执行一次，之后以1000毫秒为间隔，无限重复执行
+示例：
+/**
+ * Timer定时器测试验证类
+ */
+public class Thread20 {
+    public static void main(String[] args) {
+        Timer timer = new Timer();
+        System.out.println("***************************");
+        TimerTask task2 = new TimerTask() {
+            @Override
+            public void run() {
+                System.out.println("task2 run time" + new Date());
+            }
+        };
+        System.out.println("task2 start time" + new Date());
+        // 该任务启动后，延迟指定的时毫秒数后执行一次，之后以1000毫秒为间隔，无限重复执行
+        timer.schedule(task2, 2000, 1000);
+    }
+}
+3.1.3	schedule(TimerTask task, Date time)
+该方法以启动的时间为主，在指定的时间执行相关的代码，如果时间在过去，则计划立即执行任务。
+示例：
+/**
+ * Timer定时器测试验证类
+ */
+public class Thread20 {
+    public static void main(String[] args) {
+        Timer timer = new Timer();
+        System.out.println("***************************");
+        TimerTask task = new TimerTask() {
+            @Override
+            public void run() {
+                System.out.println("task run time" + new Date());
+            }
+        };
+        System.out.println("task start time" + new Date());
+        // 该任务启动后，再指定的时间执行相关的任务，如果指定的时间为过去，那么会立即执行。
+        // timer.schedule(task, new Date(System.currentTimeMillis() + 2000));
+        timer.schedule(task, new Date(System.currentTimeMillis() - 2000));
+      }
+}
+3.1.4	schedule(TimerTask task, Date time, long period)
+该任务启动后，在指定的时间（如果是过去，则立马执行）执行一次后，之后以1000毫秒为间隔，无限重复执行
+/**
+ * Timer定时器测试验证类
+ */
+public class Thread20 {
+    public static void main(String[] args) {
+        Timer timer = new Timer();
+        System.out.println("***************************");
+        TimerTask task1 = new TimerTask() {
+            @Override
+            public void run() {
+                System.out.println("task1 run time" + new Date());
+            }
+        };
+        System.out.println("task1 start time" + new Date());
+        // 该任务启动后，在指定的时间（如果晚于当前时间，则立马执行，否则等到指定时间点时才执行）执行一次后，之后以1000毫秒为间隔，无限重复执行
+        timer.schedule(task1, new Date(System.currentTimeMillis() + 5000), 1000);
+        // timer.schedule(task1, new Date(System.currentTimeMillis() + 5000), 1000);
+      }
+}
+3.2	scheduleAtFixedRate()方法
+用法参考schedule()方法。schedule()方法和scheduleAtFixedRate()方法不需要考虑线程安全问题，因为任务都是按照顺序放到队列中，也会按照顺序执行。
+3.3	cancel()方法
+	Timer类中cancel()方法，会将所有的任务队列中的任务全部清除掉（但有时也会出现无法清除的现象，导致执行cancel()后，任务依旧会执行），然后自动停止程序。                                    TimerTask类中的cancle()方法只是清除自身的任务，而不会影响其他任务，程序不会退出。
+示例：
+/**
+ * Timers类中cancel()方法测试验证类
+ */
+public class Thread21 {
+    public static void main(String[] args) {
+        Timer timer = new Timer();
+        System.out.println("***************************");
+        TimerTask task = new TimerTask() {
+            @Override
+            public void run() {
+                System.out.println("task run time" + new Date());
+            }
+        };
+        TimerTask task1 = new TimerTask() {
+            @Override
+            public void run() {
+                System.out.println("task1 run time" + new Date());
+            }
+        };
+        // 该任务启动后
+        timer.schedule(task, 2000);
+        timer.schedule(task1, 2000);
+        // task.cancel();
+        timer.cancel();
+    }
+}
+
