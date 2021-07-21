@@ -729,3 +729,114 @@ public class Thread21 {
     }
 }
 
+4	单例模式与多线程
+4.1	饿汉模式单例
+饿汉模式在使用类的时候就已经new出来一个对象的实例，不管有没有用到。这种情况下，对象一直存在内存中，有点占用资源。
+实例：
+/**
+ * 单例模式（饿汉式）
+ */
+public class Thread22 {
+    public static void main(String[] args) {
+        for (int i = 0; i < 500; i++) {
+            new Thread(() -> System.out.println(
+                Thread.currentThread().getName() + " get: " + SingleModel22.getSingleModel22().hashCode()),
+                "Thread" + i).start();
+        }
+    }
+}
+
+class SingleModel22 {
+    private static final SingleModel22 singleModel22 = new SingleModel22();
+
+    private SingleModel22 () {}
+
+    public static SingleModel22 getSingleModel22 () {
+        return singleModel22;
+    }
+}
+从打印结果来看，所有的hashcode都是同一个值，可以确认实现了饿汉式单例模式。但是由于getSingleModel22()方法没有同步，也有可能会出现线程不安全问题。
+4.2	懒汉模式单例（DCL版，推荐）
+懒汉模式单例在使用类的时候，不会立即new出来对象的实例，而是在用到的时候，才开始new，这样可以避免浪费内存的问题。
+	需要对对象实例需要增加volatile关键字。
+	增加双重检查锁实现，避免线程不安全问题
+示例：
+/**
+ * DCL单例模式（懒汉式）
+ */
+public class Thread23 {
+    public static void main(String[] args) {
+        for (int i = 0; i < 5; i++) {
+            new Thread(() -> System.out.println(
+                Thread.currentThread().getName() + " get: " + SingleModel.getSingleModelInstance().hashCode()),
+                "Thread" + i).start();
+        }
+    }
+}
+
+class SingleModel {
+    private volatile static SingleModel singleModel;
+
+    private SingleModel() {
+    }
+
+    public static SingleModel getSingleModelInstance() {
+        if (singleModel == null) {
+            synchronized (SingleModel.class) {
+                if (singleModel == null) {
+                    singleModel = new SingleModel();
+                }
+            }
+        }
+        return singleModel;
+    }
+}
+从打印结果来看，所有的hashcode都是同一个值，可以确认实现了懒汉式单例模式。由于getSingleModelInstance ()方法DCL机制，所以基本上避免了现线程不安全问题。DCL版本的懒汉式单例模式也是最常用的设计模式。
+4.3	静态内部类实现单例模式
+在JAVA中，静态代码，静态域只会在使用类的时候执行一次，所以一定是线程安全的。所以可以使用静态内部类来实现单例模式。
+示例：
+/**
+ * 静态内部类实现单例模式
+ */
+public class Thread24 {
+    public static class InnerThread24 {
+        private static final Thread24 thread24 = new Thread24();
+    }
+
+    public static Thread24 getInstance() {
+        return InnerThread24.thread24;
+    }
+
+    public static void main(String[] args) {
+        for (int i = 0; i < 50; i++) {
+            new Thread(() -> System.out.println(
+                Thread.currentThread().getName() + " get: " + Thread24.getInstance().hashCode()),
+                "Thread" + i).start();
+        }
+    }
+}
+从打印结果来看，所有的hashcode都是同一个值，可以确认实现了饿汉式单例模式。由于静态内部类只会执行一次，所以基本上避免了现线程不安全问题。
+4.4	使用static代码块实现单例模式
+和静态内部类一样，静态代码块在类使用的时候，静态代码块只会执行一次，所以，静态代码块也可以实现单例模式，并且还不用担心线程不安全的问题。
+示例：
+/**
+ * 使用静态代码块实现单例模式
+ */
+public class Thread25 {
+    private static Thread25 thread25;
+    static {
+        thread25 = new Thread25();
+    }
+
+    public static void main(String[] args) {
+        for (int i = 0; i < 5; i++) {
+            new Thread(() -> System.out.println(
+                Thread.currentThread().getName() + " get: " + thread25.hashCode()),
+                "Thread" + i).start();
+        }
+    }
+}
+从打印结果来看，所有的hashcode都是同一个值，可以确认实现了饿汉式单例模式。由于静态代码块只会执行一次，所以基本上避免了现线程不安全问题。
+5	线程状态
+线程状态在Thread.State枚举类中定义，线程在不同的运行时期，便会进入不同的状态。大多数状态之间都是双向的。线程状态转化如下。
+
