@@ -8,7 +8,7 @@ Spring Boot自动配置原理
 
  2、Spring Boot自动配置原理思维导图
 
-
+<img src="C:\Users\lwx5317690\AppData\Roaming\Typora\typora-user-images\image-20210726164708452.png" alt="image-20210726164708452" style="zoom:100%" />
 
 3、主程序入口、启动类
 
