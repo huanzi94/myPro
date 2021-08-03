@@ -1,4 +1,3 @@
-SpringBoot静态资源加载原理
 
 一、WebMvcAutoConfiguration类
 
@@ -21,7 +20,79 @@ WebMvcAutoConfiguration类的源码如下：
     			……省略其他代码……
     }
 
-二、视图解析器
+二、WebMvcConfigurer类
+
+		WebMvcAutoConfiguration中有一个实现了WebMvcConfigurer类的WebMvcAutoConfigurationAdapter类，已经帮我们实现了一些默认的功能，比如：默认的视图解析器配置，LocaleResolver配置等，如果实现了WebMvcConfigurer接口，就可以扩展SpringMVC的一些功能。
+
+    @Configuration
+    @Import(EnableWebMvcConfiguration.class)
+    @EnableConfigurationProperties({ WebMvcProperties.class, ResourceProperties.class })
+    @Order(0)
+    public static class WebMvcAutoConfigurationAdapter implements WebMvcConfigurer, ResourceLoaderAware {
+        ……省略其他代码……
+    }
+
+1、@Import(EnableWebMvcConfiguration.class)注解
+
+		EnableWebMvcConfiguration.class的父类中有一个@Autowired注解的方法，那么他就会将所有的实现了WebMvcConfigurer接口的类从容器中拿出来添加到configurer变量中保存起来。
+
+    @Configuration
+    public class DelegatingWebMvcConfiguration extends WebMvcConfigurationSupport {
+        private final WebMvcConfigurerComposite configurers = new WebMvcConfigurerComposite();
+        @Autowired(
+            required = false
+        )
+        public void setConfigurers(List<WebMvcConfigurer> configurers) {
+            if (!CollectionUtils.isEmpty(configurers)) {
+                this.configurers.addWebMvcConfigurers(configurers);
+            }
+        }
+    }
+
+		configurer变量底层实际上就是将这些configurers保存在一个List<WebMvcConfigurer>的delegates变量里面，当我们在实现了WebMvcConfigurer接口的类中调用WebMvcConfigurer方法的时候，就是循环delegates变量，依次调用。
+
+    @Configuration
+    public static class EnableWebMvcConfiguration extends DelegatingWebMvcConfiguration {
+        ……省略其他代码……
+    }
+    
+    @Configuration
+    public class DelegatingWebMvcConfiguration extends WebMvcConfigurationSupport {
+        private final WebMvcConfigurerComposite configurers = new WebMvcConfigurerComposite();
+        public void setConfigurers(List<WebMvcConfigurer> configurers) {
+            if (!CollectionUtils.isEmpty(configurers)) {
+                // 调用addWebMvcConfigurers()方法
+                this.configurers.addWebMvcConfigurers(configurers);
+            }
+        }
+        ……省略其他代码……
+    }
+    
+    class WebMvcConfigurerComposite implements WebMvcConfigurer {
+        private final List<WebMvcConfigurer> delegates = new ArrayList();
+        // addWebMvcConfigurers()方法实现，将所有的configurers添加到delegates变量中。
+        public void addWebMvcConfigurers(List<WebMvcConfigurer> configurers) {
+            if (!CollectionUtils.isEmpty(configurers)) {
+                this.delegates.addAll(configurers);
+            }
+        }
+         ……省略其他代码……
+    }
+     
+    class WebMvcConfigurerComposite implements WebMvcConfigurer {	
+        // 调用addInterceptors()方式时，就是循环delegates变量，依次调用。
+        public void addInterceptors(InterceptorRegistry registry) {
+                Iterator var2 = this.delegates.iterator();
+    
+                while(var2.hasNext()) {
+                    WebMvcConfigurer delegate = (WebMvcConfigurer)var2.next();
+                    delegate.addInterceptors(registry);
+                }
+    
+            }
+    }
+
+三、视图解析器
 
 1、InternalResourceViewResolver默认的视图解析器
 
@@ -29,7 +100,7 @@ WebMvcAutoConfiguration类的源码如下：
 
 3、ContentNegotiatingViewResolver
 
-三、静态资源配置原理
+四、静态资源配置原理
 
 1、LocaleResolver获取语言方式配置
 
@@ -39,7 +110,7 @@ WebMvcAutoConfiguration类的源码如下：
      * 如果设置了yml文件spring.mvc.locale才会进来执行。
      * spring:
      *   mvc:
-     *     locale-resolver: fixed(从请求参数获取，自定义传参)/accept_header(从请求头中获取:Accept-Language)
+     *     locale-resolver: fixed(获取固定参数)/accept_header(从请求头中获取:Accept-Language)
      *	   // 如果设置为fiexd，那么直接会根据这里配置的locale获取语种，如果这里没有配置，那么直接会被Accept-Language覆盖
      *     locale: zh_CN 
      */
@@ -102,4 +173,7 @@ WebMvcAutoConfiguration类的源码如下：
 3、SpringBoot的全局配置文件加载
 
 		SpringBoot提供了三种格式的全局配置文件，application.yml、application.yaml、application.propreties。如果项目没有三者中的一个，那么SpringBoot就会使用默认的配置，比如：sevlet容器就会使用Tomcat容器，端口自然会使用Tomcat的默认端口8080。
+
+
+
 
