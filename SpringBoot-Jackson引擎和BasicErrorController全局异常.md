@@ -104,7 +104,7 @@ SpringBoot-Jackson引擎和BasicErrorController全局异常
 
 	    DefaultErrorAttributes 实际上是封装了ServerProperties里面的部分配置内容，ErrorAttributes的默认实现。尽可能提供以下属性：
 
-- timestamp - 
+- timestamp - The time that the errors were extracted
 
 - status - The status code
 - error - The error reason
