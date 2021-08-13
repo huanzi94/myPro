@@ -247,3 +247,89 @@ SpringApplication的run方法：
 - 调用refresh()：加载IOC容器、创建了Servlet容器、获取了所有的自动配置类……
 
 3、期间发布了一系列的监听器，对外进行了扩展。
+     
+     
+     
+     
+     
+ public void refresh() throws BeansException, IllegalStateException {
+        synchronized(this.startupShutdownMonitor) {
+            // 设置启动时间，是否激活状态标志，加载了有一系列的PropertySources文件等
+            /**
+             * 准备刷新之前的工作：
+             * 1、设置启动时间。
+             * 2、设置激活标志为true。
+             * 3、设置关闭状态为false。
+             * 4、获取Environment对象，并将当前系统大属性设置到Environment对象中。
+             * 5、创建了一个监听器集合对象。
+             */
+            this.prepareRefresh();
+         /**
+          * 1、获取BeanFactory,并组装BeanDefinition。
+          * 2、在获取BeanFactory的时候，先判断是否已经存在BeanFactory，如果存在会先destroy掉和close掉。
+          * 3、设置BeanFactory的序列化ID,设置序列化ID的目的是为了辅助BeanFactory反序列化的。BeanFactory中有好多类型
+          *    是没有实现Serializable接口的，所以在序列化时。只需要存储序列化ID，反序列化的时候，再按照这个序列化ID找到
+          *    DefaultListableBeanFactory实例。大大提高了效率
+          * 4、设置是否允许同名Bean覆盖，默认为true。
+          * 5、设置是否允许Bean循环引用，默认为true：
+          *    bean循环依赖的有singleton和prototype两种方式，其中singleton是通过属性注入依赖，prototype是通过构造器注入依赖。
+          *    在容器启动后先获取singleton。
+          * 6、从传入的xml，配置资源中读取bean信息，并存放在beanDefinitionMap中。
+          * 7、将beanFactory存放到当前上下文中。对于spring来说，存放在AbstractRefreshableApplicationContext中。
+          */
+         ConfigurableListableBeanFactory beanFactory = this.obtainFreshBeanFactory();
+             // 给beanFactory设置了一些属性，注册了一些组件。
+         /**
+          * 1、给beanFactory设置了一些属性，注册了一些组件。
+          */
+             this.prepareBeanFactory(beanFactory);
+
+             try {
+             // 这是一个空实现，是供子类来扩展的，用来对beanFactory的增强实现。
+              /**
+               * 1、这是一个空实现，是供子类来扩展的，用来对beanFactory的增强实现。
+               */
+             this.postProcessBeanFactory(beanFactory);
+             // 自动配置类就是在这个时候加载的
+              /**
+               * 1、调用beanFactory的各种的后置增强器,实际上就是调引用各种实现了BeanDefinitionRegistryPostProcessor的实现类的
+               *    postProcessBeanDefinitionRegistry方法和实现了BeanFactoryPostProcessor接口的实现类的
+               *    postProcessBeanFactory方法。
+               * 2、并将上述的实现类注册到 Spring IoC容器中。
+               */
+             this.invokeBeanFactoryPostProcessors(beanFactory);
+             // 注册一系列的BeanPostProcessor类型的Bean
+                 /**
+                  * 1、注册一系列的BeanPostProcessor类型的Bean到beanFactory中。
+                  */
+             this.registerBeanPostProcessors(beanFactory);
+             // 初始化国际化的资源信息并放入容器中
+             this.initMessageSource();
+             // 注册ApplicationEventMulticaster
+             this.initApplicationEventMulticaster();
+             // 调用了ServletWebServerApplicationContext的onRefresh，创建了内置的Servlet容器（Tomcat），并启动。
+             this.onRefresh();
+             // 将容器中的事件监听器添加到事件广播中，并发布一系列的早期事件
+             this.registerListeners();
+             // 创建并实例化所有的Bean
+             this.finishBeanFactoryInitialization(beanFactory);
+             // 清除资源文件缓存，调用生命周期处理器的onRefresh，发布一些监听器事件
+             this.finishRefresh();
+             } catch (BeansException var9) {
+             if (this.logger.isWarnEnabled()) {
+             this.logger.warn("Exception encountered during context initialization - cancelling refresh attempt: " + var9);
+             }
+             // 销毁已创建的单例，以避免挂起资源。
+             this.destroyBeans();
+             // 重置激活状态标志为false。
+             this.cancelRefresh(var9);
+             throw var9;
+             } finally {
+             // 清除缓存
+             this.resetCommonCaches();
+             }
+
+             }
+             }
+
+             }
