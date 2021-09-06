@@ -1,0 +1,200 @@
+1、因为限定了数组初始化时的容量是2的n次幂，那么扩容时，只需要看n位置上的二进制位是0或者1即可，如果是0，则旧数组上的位置就是新数组上的位置。
+
+也就是新旧数组存放改元素的索引是一致的，但是如果是1，则在旧数组的的索引基础上增加原来的数组的长度就可以确定该元素在新数组上的索引位置。实际上，索引位置是相对的。如果旧数组长度为16，元素在旧数组中索引是2，那么在新数组上只有两种情况，2或者18（2+16）。
+
+		源码中transfer()方法第2454行和2455行有所体现：
+
+    /**
+     * nextTab：就是新数组
+     * i：就是元素在旧数组上的索引
+     * n：就是旧数组的长度
+     */
+    int n = tab.length, stride;
+    for (int i = 0, bound = 0;;) {………………}
+    setTabAt(nextTab, i, ln);
+    setTabAt(nextTab, i + n, hn);
+
+关键属性：
+
+    /**
+     * 默认初始表容量,必须是2的幂（即至少1）。
+     */
+    private static final int DEFAULT_CAPACITY = 16;
+    
+    /**
+     * 最大可能的（非2的幂）数组大小。减8的原因是因为需要一些空间存放数组默认属性。
+     */
+    static final int MAX_ARRAY_SIZE = Integer.MAX_VALUE - 8;
+    
+    /**
+     * 扩容因子，实际上，ConcurrentHashMap在扩容时，不会等到实际定义的实际容量的时候才去扩容，而是容量达到实际容量的0.75倍时，就已经开始扩容。
+     * eg：如果我们定义的实际容量为16，当放满12（16 * 0.75）个元素的时候就开始扩容。
+     */
+    private static final float LOAD_FACTOR = 0.75f;
+    
+    /**
+     * 树化时的阈值，链表容量达到8个长度的时候， 就开始转化为红黑树。
+     */
+    static final int TREEIFY_THRESHOLD = 8;
+    
+    /**
+     * 树的长度小于6的时候， 就开始转化为链表。
+     */
+    static final int UNTREEIFY_THRESHOLD = 6;
+    
+    /**
+     * 重要：这个参数有三种情况：
+     *      1、sizeCtl = -1：说明正在初始化表
+     *      2、sizeCtl = -N: 代表有X个线程正在进行扩容操作。这里的X取-N对应的二进制的低16位数值为M，此时有M-1个线程进行扩容
+     *      3、其余情况：如果表已经创建完成，代表需要扩容的阈值（容量的0.75倍）。
+     *                  如果表未创建，代表需要初始化的表的容量。
+     */
+    private transient volatile int sizeCtl;
+
+关键方法：
+
+ConcurrentHashMap(int initialCapacity)：
+
+    /**
+     * 带参构造函数
+     */
+    public ConcurrentHashMap(int initialCapacity) {
+        if (initialCapacity < 0)
+            throw new IllegalArgumentException();
+        /**
+         * initialCapacity是我们指定的容量，如果该容量>=最大容量的一半，那么指定的容量就是最大容量，否则，
+         * 就找大于(指定容量 + (指定容量/2) + 1)的最近的2的次幂数为指定容量。
+         * eg: 如果指定容量为8，那么(8 + 8/2 + 1)=13，那么最终初始容量为16。
+         */
+        int cap = ((initialCapacity >= (MAXIMUM_CAPACITY >>> 1)) ?
+                   MAXIMUM_CAPACITY :
+                   /**
+                    * 找大于(指定容量 + (指定容量/2) + 1)的最近的2的次幂数为指定容量。tableSizeFor这个函数多次测试发现
+                    * 就是该含义。这里和HashMap有区别，HashMap直接会将指定容量传进去计算，那么找的就是大于指定容量的最近的2的次幂数为指定容量
+                    */
+                   tableSizeFor(initialCapacity + (initialCapacity >>> 1) + 1));
+        this.sizeCtl = cap;
+    }
+
+ putVal(K key, V value, boolean onlyIfAbsent)：
+
+    final V putVal(K key, V value, boolean onlyIfAbsent) {
+        if (key == null || value == null) throw new NullPointerException();
+        int hash = spread(key.hashCode());
+        int binCount = 0;
+        for (Node<K,V>[] tab = table;;) {
+            Node<K,V> f; int n, i, fh;
+            /**
+             * 判断是否需要创建表，表创建好之后，这里就不会在进去了
+             */
+            if (tab == null || (n = tab.length) == 0)
+                tab = initTable();
+            /**
+             * 表创建好之后，开始存放第一个元素，首先会判断我们的第i个位置上是否已经存在数据了，如果不存在，则在该位置上直接
+             * new Node<K,V>(hash, key, value, null)放在数组第i个位置上。其中 i = (n - 1) & hash)实际上就是在计算该元素
+             * 在数组中的下标，等效于 i = (tabel.length - 1) & hash计算后得到的值为数组下标。
+             */
+            else if ((f = tabAt(tab, i = (n - 1) & hash)) == null) {
+                if (casTabAt(tab, i, null,
+                             new Node<K,V>(hash, key, value, null)))
+                    break;                   // no lock when adding to empty bin
+            }
+            else if ((fh = f.hash) == MOVED)
+                tab = helpTransfer(tab, f);
+            else {
+                V oldVal = null;
+                synchronized (f) {
+                    if (tabAt(tab, i) == f) {
+                        if (fh >= 0) {
+                            binCount = 1;
+                            for (Node<K,V> e = f;; ++binCount) {
+                                K ek;
+                                if (e.hash == hash &&
+                                    ((ek = e.key) == key ||
+                                     (ek != null && key.equals(ek)))) {
+                                    oldVal = e.val;
+                                    if (!onlyIfAbsent)
+                                        e.val = value;
+                                    break;
+                                }
+                                Node<K,V> pred = e;
+                                if ((e = e.next) == null) {
+                                    pred.next = new Node<K,V>(hash, key,
+                                                              value, null);
+                                    break;
+                                }
+                            }
+                        }
+                        else if (f instanceof TreeBin) {
+                            Node<K,V> p;
+                            binCount = 2;
+                            if ((p = ((TreeBin<K,V>)f).putTreeVal(hash, key,
+                                                           value)) != null) {
+                                oldVal = p.val;
+                                if (!onlyIfAbsent)
+                                    p.val = value;
+                            }
+                        }
+                    }
+                }
+                if (binCount != 0) {
+                    if (binCount >= TREEIFY_THRESHOLD)
+                        treeifyBin(tab, i);
+                    if (oldVal != null)
+                        return oldVal;
+                    break;
+                }
+            }
+        }
+        addCount(1L, binCount);
+        return null;
+    }
+
+initTable()：
+
+    private final Node<K,V>[] initTable() {
+        Node<K,V>[] tab; int sc;
+        while ((tab = table) == null || tab.length == 0) {
+            /**
+             * 第一次进来，sizeCtl为计算出来的表的容量，并将值赋值到sc，那么sc也就是表的容量。
+             */
+            if ((sc = sizeCtl) < 0)
+                /**
+                 * 要保证线程安全，也就是确保只能有一个线程去初始化表。如果sizeCtl=-1小于0，其他线程让出cpu,
+                 * 只允许第一个线程去执行创建表的操作。
+                 */
+                Thread.yield(); // lost initialization race; just spin
+            /**
+             * 第一个进来的线程执行U.compareAndSwapInt(this, SIZECTL, sc, -1)将sizeCtl更改为-1，确保后续
+             * 的线程让出cpu,不会进来这个分支，只有它一个在执行创建表的操作。
+             */
+            else if (U.compareAndSwapInt(this, SIZECTL, sc, -1)) {
+                try {
+                    if ((tab = table) == null || tab.length == 0) {
+                        /**
+                         * 马上要创建数组了，这里确认下数组的长度，是默认值还是sc设置的值。
+                         */
+                        int n = (sc > 0) ? sc : DEFAULT_CAPACITY;
+                        @SuppressWarnings("unchecked")
+                        Node<K,V>[] nt = (Node<K,V>[])new Node<?,?>[n];
+                        table = tab = nt;
+                        /**
+                         * 数组创建好值后，sc的值被更改为扩容时的阈值（指定的容量 * 0.75）
+                         */
+                        sc = n - (n >>> 2);
+                    }
+                } finally {
+                    /**
+                     * 数组创建好值后，ssizeCtl的值被更改为扩容时的阈值（指定的容量 * 0.75）
+                     */
+                    sizeCtl = sc;
+                }
+                break;
+            }
+        }
+        return tab;           
+    }
+
+addCount(1L, binCount);
+
+
