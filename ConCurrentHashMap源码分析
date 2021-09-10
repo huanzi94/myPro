@@ -1,3 +1,5 @@
+ConCurrentHashMap
+
 1、因为限定了数组初始化时的容量是2的n次幂，那么扩容时，只需要看n位置上的二进制位是0或者1即可，如果是0，则旧数组上的位置就是新数组上的位置。
 
 也就是新旧数组存放改元素的索引是一致的，但是如果是1，则在旧数组的的索引基础上增加原来的数组的长度就可以确定该元素在新数组上的索引位置。实际上，索引位置是相对的。如果旧数组长度为16，元素在旧数组中索引是2，那么在新数组上只有两种情况，2或者18（2+16）。
@@ -13,6 +15,15 @@
     for (int i = 0, bound = 0;;) {………………}
     setTabAt(nextTab, i, ln);
     setTabAt(nextTab, i + n, hn);
+
+2、红黑树的特点：
+
+- 每个节点或是红色的或是黑色的。
+- 根节点是黑色的。
+- 每个叶子节点是黑色的。
+- 如果一个节点是红色的，那么它的两个儿子节点是黑色的。
+- 对每个节点，从该节点到其子孙节点上的所有路劲上的黑色节点数目相同。
+- 待插入的节点默认是红色的。
 
 关键属性：
 
@@ -53,7 +64,7 @@
 
 关键方法：
 
-ConcurrentHashMap(int initialCapacity)：
+- ConcurrentHashMap(int initialCapacity)：带参构造函数，参数为数组的大小，但是该指定的参数并不一定是数组的实际大小。
 
     /**
      * 带参构造函数
@@ -76,7 +87,7 @@ ConcurrentHashMap(int initialCapacity)：
         this.sizeCtl = cap;
     }
 
- putVal(K key, V value, boolean onlyIfAbsent)：
+- putVal(K key, V value, boolean onlyIfAbsent)：调用put()方法的时候，调用该方法进行数据的插入。
 
     final V putVal(K key, V value, boolean onlyIfAbsent) {
         if (key == null || value == null) throw new NullPointerException();
@@ -107,17 +118,32 @@ ConcurrentHashMap(int initialCapacity)：
                     if (tabAt(tab, i) == f) {
                         if (fh >= 0) {
                             binCount = 1;
+                           /**
+                            * 开始循环第i个位置上的链表
+                            */
                             for (Node<K,V> e = f;; ++binCount) {
                                 K ek;
+                               /**
+                                * 如果第i个位置上的元素的key和新put的元素的key是一样的，则直接将旧值保存起来，
+                                * 后用新值覆盖旧值，key还是之前的那个key，并且将旧值返回（put是有返回值的）。
+                                */
                                 if (e.hash == hash &&
                                     ((ek = e.key) == key ||
                                      (ek != null && key.equals(ek)))) {
+                                    /**
+                                     * 如果发生了hash冲突，保存旧值，直接用新值替换旧值
+                                     */
                                     oldVal = e.val;
                                     if (!onlyIfAbsent)
                                         e.val = value;
                                     break;
                                 }
                                 Node<K,V> pred = e;
+                               /**
+                                * 如果第i个位置上的元素有指向下一个元素的指针next（单向链表特性），并且next是null，
+                                * 则说明是已经循环到了i位置上的最后一个链表位置，那么直接将新的key-value插入到此处即可。
+                                * pred（e）的next指向新的key-value的node节点即可，并且该node节点的next为null。
+                                */
                                 if ((e = e.next) == null) {
                                     pred.next = new Node<K,V>(hash, key,
                                                               value, null);
@@ -125,11 +151,23 @@ ConcurrentHashMap(int initialCapacity)：
                                 }
                             }
                         }
+                        /**
+                         * 如果第i个位置上的元素是一颗红黑树，调用putTreeVal将新的key-value插入红黑树的节点，
+                         * 这里比较复杂，因为在插入新的节点之后，要保持红黑树的平衡性，要做一系列的左旋或者右旋，
+                         * 节点的红黑颜色的变换。
+                         */
                         else if (f instanceof TreeBin) {
                             Node<K,V> p;
                             binCount = 2;
+                            /**
+                             * 如果找到key相同的红黑树的节点的位置，说明发生了hash冲突，将该节点返回，进行该节点值的替换操作。
+                             * 如果返回来的是null，说明没有发生hash冲突，节点插入成功。
+                             */
                             if ((p = ((TreeBin<K,V>)f).putTreeVal(hash, key,
                                                            value)) != null) {
+                                /**
+                                 * 如果发生了hash冲突，保存旧值，直接用新值替换旧值
+                                 */
                                 oldVal = p.val;
                                 if (!onlyIfAbsent)
                                     p.val = value;
@@ -138,7 +176,14 @@ ConcurrentHashMap(int initialCapacity)：
                     }
                 }
                 if (binCount != 0) {
+                    /**
+                     * 插入新的元素后，判断下数组中第i位置上的链表容量是否超过了树化阈值，如果超过了树化阈值（8），
+                     * 那么需要将链表转化为红黑树。
+                     */
                     if (binCount >= TREEIFY_THRESHOLD)
+                        /**
+                         * 树化方法
+                         */
                         treeifyBin(tab, i);
                     if (oldVal != null)
                         return oldVal;
@@ -146,11 +191,14 @@ ConcurrentHashMap(int initialCapacity)：
                 }
             }
         }
+        /**
+         * 统计数据，判断是否需要进行扩容操作，并进行数据迁移
+         */
         addCount(1L, binCount);
         return null;
     }
 
-initTable()：
+initTable()：初始化数组。当第一次调用put()方法的时候，才会调用该方法，进行数组的初始化。
 
     private final Node<K,V>[] initTable() {
         Node<K,V>[] tab; int sc;
@@ -195,6 +243,493 @@ initTable()：
         return tab;           
     }
 
-addCount(1L, binCount);
+- putTreeVal(hash, key, value)：向红黑树中插入一个新的节点。插入的时候，需要从root节点开始进行大小判断，定位该元素应该放在当前节点的左孩子位置还是右孩子位置。
 
+    final TreeNode<K,V> putTreeVal(int h, K k, V v) {
+        Class<?> kc = null;
+        boolean searched = false;
+        /**
+         * 对于红黑树来说，必须有一个root节点，其余的子孙节点都是在这个根节点向下发展的
+         */
+        for (TreeNode<K,V> p = root;;) {
+            int dir, ph; K pk;
+            /**
+             * 如果没有根节点root，就以待插入的key-value创建一个。
+             */
+            if (p == null) {
+                first = root = new TreeNode<K,V>(h, k, v, null, null);
+                break;
+            }
+            /**
+             * 如果p（root）节点的大于待插入的key的hash（h）,说明该key-value一定为p的左子树，否则为右子树。
+             */
+            else if ((ph = p.hash) > h)
+                /**
+                 * 标记为p的左子树。
+                 */
+                dir = -1;
+            else if (ph < h)
+                /**
+                 * 标记为p的右子树。
+                 */
+                dir = 1;
+            /**
+             * 如果发生了hash冲突，则直接将p（root），也就是把当前节点返回。
+             */
+            else if ((pk = p.key) == k || (pk != null && k.equals(pk)))
+                return p;
+            /**
+             * 如果根据hash值无法判断待插入的key应该是放在哪个位置，则用下边这种方式进行判断：
+             * 如果key的类型实现了Comparable接口，那么就返回key的类型的class,否则就返回null。
+             * (kc = comparableClassFor(k)) == null)如果返回不是true，那么调用mpareComparables
+             * 这个方法得到一个dir值，实际上mpareComparables方法就是调用了key的类型的class的compareTo方法。
+             */
+            else if ((kc == null &&
+                      (kc = comparableClassFor(k)) == null) ||
+                     (dir = compareComparables(kc, k, pk)) == 0) {
+                if (!searched) {
+                    TreeNode<K,V> q, ch;
+                    searched = true;
+                    /**
+                     * 如果找到了与待插入的key相同的节点，就将该节点返回，外层进行替换即可。
+                     */
+                    if (((ch = p.left) != null &&
+                         (q = ch.findTreeNode(h, k, kc)) != null) ||
+                        ((ch = p.right) != null &&
+                         (q = ch.findTreeNode(h, k, kc)) != null))
+                        return q;
+                }
+                 /**
+                  * 如果上述两个方法都无法判断待插入的key应该是放在哪个位置，那么调用该方法使用
+                  * System.identityHashCode进行判断。
+                  */
+                dir = tieBreakOrder(k, pk);
+            }
+    
+            TreeNode<K,V> xp = p;
+            /**
+             * 根据dir的值来判断，待插入的值是插在左子树的位置还是右子树的位置。并将当前节点的左子树或者右子树
+             * 指向p
+             */
+            if ((p = (dir <= 0) ? p.left : p.right) == null) {
+                TreeNode<K,V> x, f = first;
+                /**
+                 * 根据待插入的key-value创建一个树节点。
+                 */
+                first = x = new TreeNode<K,V>(h, k, v, f, xp);
+                if (f != null)
+                    /**
+                     * 实际上，树节点也是一个双向链表，因为TreeNode extends Node<K,V>，Node里面有一个prev属性，
+                     * 就是指向上一个元素的。
+                     */
+                    f.prev = x;
+                if (dir <= 0)
+                    /**
+                     * 如果dir<0,插在左子树的位置
+                     */
+                    xp.left = x;
+                else
+                    /**
+                     * 如果dir>0,插在右子树的位置
+                     */
+                    xp.right = x;
+                if (!xp.red)
+                    /**
+                     * 如果新插入的节点的父节点不是红色的，那么该节点就必须是红色的。
+                     */
+                    x.red = true;
+                else {
+                    lockRoot();
+                    try {
+                        /**
+                         * 再插入新的节点信息后，可能会导致红黑树不平衡，所以需要对红黑树进行平衡调整。
+                         */
+                        root = balanceInsertion(root, x);
+                    } finally {
+                        unlockRoot();
+                    }
+                }
+                break;
+            }
+        }
+        /**
+         * 验证是不是红黑树，这个是可选的，如果idea中没有配置开启assert验证，那么就不会执行。
+         */
+        assert checkInvariants(root);
+        return null;
+    }
 
+- balanceInsertion(root, x)：对红黑树进行平衡调整，涉及到红黑树的左旋操作，右旋操作，以及节点的颜色的改变。
+
+    static <K,V> TreeNode<K,V> balanceInsertion(TreeNode<K,V> root,
+                                                TreeNode<K,V> x) {
+        /**
+         * 设置新的节点的默认为红色。
+         */
+        x.red = true;
+        /**
+         * 开始循环红黑树。
+         */
+        for (TreeNode<K,V> xp, xpp, xppl, xppr;;) {
+            /**
+             * 如果新增的节点的父节点是null，表明自己就是父节点，那么就红色变黑色，
+             * 并将新节点x返回，表明他就是这棵树的父节点。
+             */
+            if ((xp = x.parent) == null) {
+                x.red = false;
+                return x;
+            }
+            /**
+             * 如果新增的节点有父节点，且新节点的父节点就是黑色的，或者新节点的祖父节点是null，
+             * 那么说明红黑树就是的平衡的，直接返回root节点。
+             */
+            else if (!xp.red || (xpp = xp.parent) == null)
+                return root;
+            /**
+             * 如果新增的节点有父节点，且新节点的父节点就是祖父节点的左子树
+             * （相当于新增节点的父节点在左子树的位置）。
+             */
+            if (xp == (xppl = xpp.left)) {
+                /**
+                 * 如果祖父节点有右子树，且右子树是红色的。
+                 * 1、“叔叔节点”变成黑色。
+                 * 2、“父亲节点”变成黑色。
+                 * 3、“祖父节点”变成红色。
+                 * 4、将祖父节点设置为当前节点，继续循环对当前节点进行调整。
+                 */
+                if ((xppr = xpp.right) != null && xppr.red) {
+                    xppr.red = false;
+                    xp.red = false;
+                    xpp.red = true;
+                    x = xpp;
+                }
+                else {
+                    /**
+                     * 祖父节点除了上边的分支，其他情况下。
+                     * 如果新插入的节点刚好是父亲节点的右子树。
+                     * 1、设置当前节点为父亲节点。
+                     * 2、以父节点为支点左旋。
+                     * 3、如果新插入节点的父亲节点不为null，那么设置祖父节点为新
+                     * 插入节点的祖父节点，否则为null。
+                     */
+                    if (x == xp.right) {
+                        root = rotateLeft(root, x = xp);
+                        xpp = (xp = x.parent) == null ? null : xp.parent;
+                    }
+                    /**
+    			    * 如果新插入节点的父节点不为null：
+    			    * 1、设置父亲节点为黑色。
+                     */
+                    if (xp != null) {
+                        xp.red = false;
+                        /**
+                        * 如果新插入节点的祖父节点不为null：
+                        * 1、设置祖父节点为红色。
+                        * 2、以祖父节点为支点右旋。
+                         */
+                        if (xpp != null) {
+                            xpp.red = true;
+                            root = rotateRight(root, xpp);
+                        }
+                    }
+                }
+            }
+            /**
+             * 如果新增的节点有父节点，且新节点的父节点不是祖父节点的左子树。
+             */
+            else {
+                /**
+                 * 如果祖父节点有左子树，且左子树是红色的（相当于新增节点的父节点在右子树的位置）。
+                 * 1、“叔叔节点”变成黑色。
+                 * 2、“父亲节点”变成黑色。
+                 * 3、“祖父节点”变成红色。
+                 * 4、将祖父节点设置为当前节点，继续循环对当前节点进行调整。
+                 */
+                if (xppl != null && xppl.red) {
+                    xppl.red = false;
+                    xp.red = false;
+                    xpp.red = true;
+                    x = xpp;
+                }
+                else {
+                    /**
+                     * 祖父节点除了上边的分支，其他情况下。
+                     * 如果新插入的节点刚好是父亲节点的左子树。
+                     * 1、设置当前节点为父亲节点。
+                     * 2、以父节点为支点右旋。
+                     * 3、如果新插入节点的父亲节点不为null，那么设置祖父节点为新
+                     * 插入节点的祖父节点，否则为null。
+                     */
+                    if (x == xp.left) {
+                        root = rotateRight(root, x = xp);
+                        xpp = (xp = x.parent) == null ? null : xp.parent;
+                    }
+                    /**
+    			    * 如果新插入节点的父节点不为null：
+    			    * 1、设置父亲节点为黑色。
+                     */
+                    if (xp != null) {
+                        xp.red = false;
+                        /**
+                        * 如果新插入节点的祖父节点不为null：
+                        * 1、设置祖父节点为红色。
+                        * 2、以祖父节点为支点左旋。
+                         */
+                        if (xpp != null) {
+                            xpp.red = true;
+                            root = rotateLeft(root, xpp);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+- rotateLeft(root, xpp)：对红黑树进行左旋调，假如这里传入的节点p为当前节点，且当前节点新插入节点的父节点（rotateLeft(root, x = xp)）。
+      
+
+    (01) 将“父节点”设为“黑色”
+    (02) 将“祖父节点”设为“红色”
+    (03) 以“父节点”为支点进行左旋  
+    /**
+     * root就是整棵树的root节点。
+     * p是当前需要旋转的支撑点。
+     */
+    static <K,V> TreeNode<K,V> rotateLeft(TreeNode<K,V> root,
+                                          TreeNode<K,V> p) {
+        TreeNode<K,V> r, pp, rl;
+        /**
+    	 * 如果旋转的支点为null，直接返回root节点。
+    	 * 如果旋转的支点不为null，设置支撑点的右孩子（p.right）为r：
+    	 *   1、设置支撑点的右孩子（p.right）指向r的左孩子（r.left）为r1,如果r1不为null,那么设置r1为p。
+    	 *   2、设置r的父节点（r.parent）指向支撑点的父节点（p.parent）为pp,如果pp==null,那么说明p没有父节点，
+    	 *      直接将root节点指向r，且应该设置为黑色。
+    	 *   3、如果p==pp的左孩子节点，设置pp的左孩子节点指向r。否则，设置pp的右孩子节点指向r。
+    	 * r的右孩子节点指向p,p的父亲节点指向r。
+         */
+        if (p != null && (r = p.right) != null) {
+            if ((rl = p.right = r.left) != null)
+                rl.parent = p;
+            if ((pp = r.parent = p.parent) == null)
+                (root = r).red = false;
+            else if (pp.left == p)
+                pp.left = r;
+            else
+                pp.right = r;
+            r.left = p;
+            p.parent = r;
+        }
+        return root;
+    }
+
+- addCount(1L, binCount)：当put一个元素的时候，都会调用addCount(1L, binCount)记录元素的个数，addCount(1L, binCount)会先利用CAS更新baseCount的值，如果因为高并发导致CAS更新baseCount失败，那么会调用 fullAddCount(x, uncontended)操作counterCells数组来计数。CounterCell是counterCells数组中保存的对象，其内部有一个volatile的value属性，当put一个元素的时候，都会调用addCount(1L, binCount)记录元素的个数，addCount(1L, binCount)会先利用CAS更新baseCount的值，如果因为高并发导致CAS更新baseCount失败，那么会new CounterCell(x)，x就是addCount(1L, binCount)的参数1L，最后将new CounterCell(x)的对象保存在counterCells数组中，并且counterCells数组的容量一定一个2的幂次数，默认为2，也就是说counterCells数组中CounterCell对象的属性永远是1，那么显而易见的可以看出，ConcurrentHashMap的大小应该是baseCounth和counterCells数组中CounterCell的value值的总和。
+
+    private final void addCount(long x, int check) {
+        CounterCell[] as; long b, s;
+        /**
+         * 如果counterCells数组不为null或者CAS失败都会对counterCells数组做更改。
+         */
+        if ((as = counterCells) != null ||
+            !U.compareAndSwapLong(this, BASECOUNT, b = baseCount, s = b + x)) {
+            CounterCell a; long v; int m;
+            boolean uncontended = true;
+            if (as == null || (m = as.length - 1) < 0 ||
+                (a = as[ThreadLocalRandom.getProbe() & m]) == null ||
+                !(uncontended =
+                  U.compareAndSwapLong(a, CELLVALUE, v = a.value, v + x))) {
+                /**
+                 * 操作counterCells数组。
+                 */
+                fullAddCount(x, uncontended);
+                return;
+            }
+            if (check <= 1)
+                return;
+            /**
+             * 调用sumCount()统计容量大小，主要用于下边的逻辑，是否达到了扩容阈值。
+             */
+            s = sumCount();
+        }
+        if (check >= 0) {
+            Node<K,V>[] tab, nt; int n, sc;
+            /**
+             * 如果达到了扩容阈值，且table不为null，且table的长度没有超过最大容量，
+             * 那么就进入扩容的逻辑。
+             * 如果是第一个线程走到这里，
+             */
+            while (s >= (long)(sc = sizeCtl) && (tab = table) != null &&
+                   (n = tab.length) < MAXIMUM_CAPACITY) {
+                /**
+                 * 可以理解为当前数组的一个标致。
+                 */
+                int rs = resizeStamp(n);
+                if (sc < 0) {
+                    if ((sc >>> RESIZE_STAMP_SHIFT) != rs || sc == rs + 1 ||
+                        sc == rs + MAX_RESIZERS || (nt = nextTable) == null ||
+                        transferIndex <= 0)
+                        break;
+                    if (U.compareAndSwapInt(this, SIZECTL, sc, sc + 1))
+                        transfer(tab, nt);
+                }
+                else if (U.compareAndSwapInt(this, SIZECTL, sc,
+                                             (rs << RESIZE_STAMP_SHIFT) + 2))
+                    transfer(tab, null);
+                s = sumCount();
+            }
+        }
+    }
+
+- sumCount()：sumCount()是size()中调用的方法，通过counterCells数组的中CounterCell的value值和baseCount相加就能得到整个ConcurrentHashMap的大小。
+
+    final long sumCount() {
+        CounterCell[] as = counterCells; CounterCell a;
+        /**
+         * baseCount为整个ConcurrentHashMap容量的基础。
+         */
+        long sum = baseCount;
+        if (as != null) {
+            /**
+             * 循环counterCells数组，获取CounterCell对象的vaue值，加上sum就是整个ConcurrentHashMap的容量。
+             */
+            for (int i = 0; i < as.length; ++i) {
+                if ((a = as[i]) != null)
+                    sum += a.value;
+            }
+        }
+        return sum;
+    }
+
+- transfer(Node<K,V>[] tab, Node<K,V>[] nextTab)：ConcurrentHashMap的扩容逻辑实现。
+
+    private final void transfer(Node<K,V>[] tab, Node<K,V>[] nextTab) {
+        int n = tab.length, stride;
+        if ((stride = (NCPU > 1) ? (n >>> 3) / NCPU : n) < MIN_TRANSFER_STRIDE)
+            stride = MIN_TRANSFER_STRIDE; // subdivide range
+        if (nextTab == null) {            // initiating
+            try {
+                @SuppressWarnings("unchecked")
+                Node<K,V>[] nt = (Node<K,V>[])new Node<?,?>[n << 1];
+                nextTab = nt;
+            } catch (Throwable ex) {      // try to cope with OOME
+                sizeCtl = Integer.MAX_VALUE;
+                return;
+            }
+            nextTable = nextTab;
+            transferIndex = n;
+        }
+        int nextn = nextTab.length;
+        ForwardingNode<K,V> fwd = new ForwardingNode<K,V>(nextTab);
+        boolean advance = true;
+        boolean finishing = false; // to ensure sweep before committing nextTab
+        for (int i = 0, bound = 0;;) {
+            Node<K,V> f; int fh;
+            while (advance) {
+                int nextIndex, nextBound;
+                if (--i >= bound || finishing)
+                    advance = false;
+                else if ((nextIndex = transferIndex) <= 0) {
+                    i = -1;
+                    advance = false;
+                }
+                else if (U.compareAndSwapInt
+                         (this, TRANSFERINDEX, nextIndex,
+                          nextBound = (nextIndex > stride ?
+                                       nextIndex - stride : 0))) {
+                    bound = nextBound;
+                    i = nextIndex - 1;
+                    advance = false;
+                }
+            }
+            if (i < 0 || i >= n || i + n >= nextn) {
+                int sc;
+                if (finishing) {
+                    nextTable = null;
+                    table = nextTab;
+                    sizeCtl = (n << 1) - (n >>> 1);
+                    return;
+                }
+                if (U.compareAndSwapInt(this, SIZECTL, sc = sizeCtl, sc - 1)) {
+                    if ((sc - 2) != resizeStamp(n) << RESIZE_STAMP_SHIFT)
+                        return;
+                    finishing = advance = true;
+                    i = n; // recheck before commit
+                }
+            }
+            else if ((f = tabAt(tab, i)) == null)
+                advance = casTabAt(tab, i, null, fwd);
+            else if ((fh = f.hash) == MOVED)
+                advance = true; // already processed
+            else {
+                synchronized (f) {
+                    if (tabAt(tab, i) == f) {
+                        Node<K,V> ln, hn;
+                        if (fh >= 0) {
+                            int runBit = fh & n;
+                            Node<K,V> lastRun = f;
+                            for (Node<K,V> p = f.next; p != null; p = p.next) {
+                                int b = p.hash & n;
+                                if (b != runBit) {
+                                    runBit = b;
+                                    lastRun = p;
+                                }
+                            }
+                            if (runBit == 0) {
+                                ln = lastRun;
+                                hn = null;
+                            }
+                            else {
+                                hn = lastRun;
+                                ln = null;
+                            }
+                            for (Node<K,V> p = f; p != lastRun; p = p.next) {
+                                int ph = p.hash; K pk = p.key; V pv = p.val;
+                                if ((ph & n) == 0)
+                                    ln = new Node<K,V>(ph, pk, pv, ln);
+                                else
+                                    hn = new Node<K,V>(ph, pk, pv, hn);
+                            }
+                            setTabAt(nextTab, i, ln);
+                            setTabAt(nextTab, i + n, hn);
+                            setTabAt(tab, i, fwd);
+                            advance = true;
+                        }
+                        else if (f instanceof TreeBin) {
+                            TreeBin<K,V> t = (TreeBin<K,V>)f;
+                            TreeNode<K,V> lo = null, loTail = null;
+                            TreeNode<K,V> hi = null, hiTail = null;
+                            int lc = 0, hc = 0;
+                            for (Node<K,V> e = t.first; e != null; e = e.next) {
+                                int h = e.hash;
+                                TreeNode<K,V> p = new TreeNode<K,V>
+                                    (h, e.key, e.val, null, null);
+                                if ((h & n) == 0) {
+                                    if ((p.prev = loTail) == null)
+                                        lo = p;
+                                    else
+                                        loTail.next = p;
+                                    loTail = p;
+                                    ++lc;
+                                }
+                                else {
+                                    if ((p.prev = hiTail) == null)
+                                        hi = p;
+                                    else
+                                        hiTail.next = p;
+                                    hiTail = p;
+                                    ++hc;
+                                }
+                            }
+                            ln = (lc <= UNTREEIFY_THRESHOLD) ? untreeify(lo) :
+                                (hc != 0) ? new TreeBin<K,V>(lo) : t;
+                            hn = (hc <= UNTREEIFY_THRESHOLD) ? untreeify(hi) :
+                                (lc != 0) ? new TreeBin<K,V>(hi) : t;
+                            setTabAt(nextTab, i, ln);
+                            setTabAt(nextTab, i + n, hn);
+                            setTabAt(tab, i, fwd);
+                            advance = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
